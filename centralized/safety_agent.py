@@ -1,6 +1,7 @@
 """Especialista de seguridad que reutiliza las reglas existentes."""
 import json
 from agents import Agent, function_tool
+from agents.mcp import MCPServer
 from pydantic import BaseModel, Field
 from shared.model_config import build_model
 from shared.safety_tool import evaluar_seguridad
@@ -60,5 +61,11 @@ def evaluar_condiciones(
     )
 
 
-def create_agent() -> Agent:
-    return Agent(name="Safety Agent", instructions="Evalúa exclusivamente datos meteorológicos mediante la herramienta y reporta su resultado completo.", tools=[evaluar_condiciones], model=build_model())
+def create_agent(mcp_server: MCPServer | None = None) -> Agent:
+    return Agent(
+        name="Safety Agent",
+        instructions="Evalúa exclusivamente datos meteorológicos mediante la herramienta y reporta su resultado completo.",
+        tools=[evaluar_condiciones] if mcp_server is None else [],
+        mcp_servers=[] if mcp_server is None else [mcp_server],
+        model=build_model(),
+    )

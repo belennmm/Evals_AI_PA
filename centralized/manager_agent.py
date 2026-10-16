@@ -1,5 +1,6 @@
 """Manager único: conserva el control y usa especialistas como herramientas."""
 from agents import Agent, Runner
+from agents.mcp import MCPServer
 from centralized.faq_agent import create_agent as create_faq_agent
 from centralized.weather_agent import WeatherAgentInput, create_agent as create_weather_agent
 from centralized.safety_agent import SafetyAgentInput, create_agent as create_safety_agent
@@ -7,11 +8,13 @@ from centralized.booking_agent import create_agent as create_booking_agent
 from shared.model_config import build_model
 
 
-def create_manager() -> Agent:
-    faq = create_faq_agent()
-    weather = create_weather_agent()
-    safety = create_safety_agent()
-    booking = create_booking_agent()
+def create_manager(mcp_server: MCPServer | None = None) -> Agent:
+    faq = create_faq_agent(mcp_server=mcp_server)
+    weather = create_weather_agent(mcp_server=mcp_server)
+    safety = create_safety_agent(mcp_server=mcp_server)
+    booking = create_booking_agent(mcp_server=mcp_server)
+    # Solo en modo MCP, propagar también los errores de las ejecuciones anidadas.
+    tool_options = {"failure_error_function": None} if mcp_server is not None else {}
 
     return Agent(
         name="Parachute Manager",
@@ -29,23 +32,27 @@ def create_manager() -> Agent:
         tools=[
             faq.as_tool(
                 tool_name="faq_agent",
-                tool_description="Resuelve FAQs con RAG."
+                tool_description="Resuelve FAQs con RAG.",
+                **tool_options,
             ),
             weather.as_tool(
                 tool_name="weather_agent",
                 tool_description="Consulta clima por fecha.",
                 parameters=WeatherAgentInput,
                 include_input_schema=True,
+                **tool_options,
             ),
             safety.as_tool(
                 tool_name="safety_agent",
                 tool_description="Evalúa seguridad con datos climáticos estructurados.",
                 parameters=SafetyAgentInput,
                 include_input_schema=True,
+                **tool_options,
             ),
             booking.as_tool(
                 tool_name="booking_agent",
-                tool_description="Registra una reserva local autorizada."
+                tool_description="Registra una reserva local autorizada.",
+                **tool_options,
             ),
         ],
         model=build_model(),

@@ -1,6 +1,7 @@
 """Calendario local en memoria; no modifica PostgreSQL."""
 import json
 from agents import Agent, function_tool
+from agents.mcp import MCPServer
 from shared.model_config import build_model
 
 _reservas: list[str] = []
@@ -27,5 +28,11 @@ def crear_reserva(fecha: str, seguridad_json: str) -> str:
     return reservar_local(fecha, seguridad_json)
 
 
-def create_agent() -> Agent:
-    return Agent(name="Booking Agent", instructions="Solo usa crear_reserva después de recibir una evaluación de seguridad; nunca reserves un estado PROHIBIDO.", tools=[crear_reserva], model=build_model())
+def create_agent(mcp_server: MCPServer | None = None) -> Agent:
+    return Agent(
+        name="Booking Agent",
+        instructions="Solo usa crear_reserva después de recibir una evaluación de seguridad; nunca reserves un estado PROHIBIDO.",
+        tools=[crear_reserva] if mcp_server is None else [],
+        mcp_servers=[] if mcp_server is None else [mcp_server],
+        model=build_model(),
+    )

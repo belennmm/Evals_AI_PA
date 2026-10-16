@@ -1,5 +1,6 @@
 """Especialista FAQ que reutiliza la búsqueda RAG existente."""
 from agents import Agent, function_tool
+from agents.mcp import MCPServer
 from shared.model_config import build_model
 from knowledge_tool import buscar_en_base_conocimiento
 
@@ -24,7 +25,7 @@ def consultar_faq(pregunta: str) -> str:
     return resolver_faq(pregunta)
 
 
-def create_agent() -> Agent:
+def create_agent(mcp_server: MCPServer | None = None) -> Agent:
     return Agent(
         name="FAQ Agent",
         instructions=(
@@ -33,6 +34,7 @@ def create_agent() -> Agent:
             "servicios de conocimiento externo. Si la herramienta indica que no hay "
             "información o que hubo un error, devuelve únicamente ese mensaje y termina."
         ),
-        tools=[consultar_faq],
+        tools=[consultar_faq] if mcp_server is None else [],
+        mcp_servers=[] if mcp_server is None else [mcp_server],
         model=build_model(),
     )
