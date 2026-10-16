@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 import uvicorn
 
 from starlette.applications import Starlette
@@ -13,6 +16,13 @@ from protocols.a2a_executor import ParachuteAgentExecutor
 
 HOST = "127.0.0.1"
 PORT = 8000
+logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app: Starlette):
+    logger.info("[A2A] Servidor iniciado endpoint=http://%s:%s/", HOST, PORT)
+    yield
 
 
 def create_app() -> Starlette:
@@ -41,6 +51,7 @@ def create_app() -> Starlette:
 
     app = Starlette(
         routes=routes,
+        lifespan=lifespan,
     )
 
     return app
@@ -64,6 +75,7 @@ def main():
         app,
         host=HOST,
         port=PORT,
+        log_level="info",
     )
 
 

@@ -4,6 +4,133 @@ Proyecto de Parachute S.A. Combina un sistema RAG de preguntas frecuentes con he
 
 El proyecto utiliza Groq mediante una API compatible con OpenAI y el modelo `openai/gpt-oss-120b`.
 
+## Protocolos Agénticos
+
+Video demostración del servidor MCP siendo ejecutado y emitiendo logs por cada ejecución de herramientas, el servidor A2A siendo ejecutado y emitiendo logs y su aplicación de terminal interactúando ya con con su servidor A2A: https://youtu.be/nYtSVs2bjnI
+
+
+El `Parachute Manager` sigue delegando mediante `as_tool()`. Cada especialista consume exclusivamente su herramienta MCP en la ruta A2A; los especialistas no se publican como agentes A2A separados. Las arquitecturas locales anteriores se conservan.
+
+### Herramientas MCP
+
+| Herramienta publicada | Especialista que la utiliza | Función |
+|---|---|---|
+| `consultar_faq` | FAQ Agent | Consulta RAG con el filtrado existente sobre PostgreSQL/pgvector. |
+| `consultar_clima` | Weather Agent | Consulta Open-Meteo para la fecha solicitada. |
+| `evaluar_condiciones` | Safety Agent | Aplica las reglas de seguridad existentes. |
+| `crear_reserva` | Booking Agent | Crea una reserva en memoria cuando la seguridad lo permite. |
+
+Si las condiciones son **`PROHIBIDO`**, `crear_reserva` **no se ejecuta**. Este bloqueo es el comportamiento correcto del sistema. Si MCP no está disponible, A2A devuelve un error controlado; no existe fallback silencioso hacia las herramientas locales.
+
+### Agente público y skills A2A
+
+La Agent Card publica únicamente **Parachute Assistant**, con dos skills. La correspondencia entre los nombres solicitados para la hoja y los publicados actualmente es:
+
+| Identificador solicitado para la hoja | Nombre solicitado | Identificador publicado en la Agent Card | Nombre publicado |
+|---|---|---|---|
+| `informacion_parachute` | Información de Parachute | `information_queries` | Consultas de informacion |
+| `gestion_reservas` | Gestión de reservas | `safety_and_booking` | Evaluacion y reservas |
+
+Para descubrir e invocar el agente se utiliza la Agent Card real. Los identificadores solicitados de la primera columna documentan las capacidades de la hoja; no son alias implementados por el servidor. La primera skill cubre consultas informativas y la segunda evaluación de seguridad y reservas.
+
+### Dependencias de protocolos
+
+Las dependencias directas utilizadas, fijadas en `requirements.txt`, son:
+
+```text
+a2a-sdk[http-server]==1.2.2
+mcp==2.3.0
+httpx==0.28.1
+starlette==1.7.0
+uvicorn==0.54.0
+```
+
+### Ejecución desde la raíz del repositorio
+
+Con las dependencias instaladas, la configuración local preparada y el corpus ya cargado, abre tres terminales PowerShell. PostgreSQL utiliza el contenedor existente; los programas Python se ejecutan con el entorno virtual local.
+
+Terminal 1 — PostgreSQL + MCP:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+docker start parachute_postgres
+python -m protocols.mcp_server
+```
+
+Terminal 2 — A2A:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m protocols.a2a_server
+```
+
+Terminal 3 — cliente:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m protocols.terminal_client
+```
+
+### Endpoints
+
+| Servicio | Endpoint |
+|---|---|
+| MCP Streamable HTTP | [http://127.0.0.1:8001/mcp](http://127.0.0.1:8001/mcp) |
+| A2A Agent Card | [http://127.0.0.1:8000/.well-known/agent-card.json](http://127.0.0.1:8000/.well-known/agent-card.json) |
+| A2A JSON-RPC 1.0 | [http://127.0.0.1:8000/](http://127.0.0.1:8000/) |
+
+### Ejemplos de prueba
+
+FAQ:
+
+```text
+¿Cuánto dura la caída libre?
+```
+
+Resultado esperado: una respuesta respaldada por el corpus que indique aproximadamente **35 a 45 segundos**. El flujo debe invocar `consultar_faq` por MCP.
+
+Reserva:
+
+```text
+Quiero reservar un salto para el 20 de octubre de 2026.
+```
+
+Resultado observado durante la prueba del 15 de octubre de 2026: condiciones **`PROHIBIDO`**, por lo que **no se crea la reserva**. Se ejecutaron `consultar_clima` y `evaluar_condiciones`; `crear_reserva` no se ejecutó. El pronóstico puede variar y la fecha debe estar dentro del horizonte disponible para repetir esta prueba.
+
+### Logs esperados para la demostración
+
+Los logs aparecen directamente en la consola de cada servidor, sin depender de archivos temporales. Los siguientes extractos omiten prefijos de fecha, nivel y metadatos de solicitud.
+
+MCP, al ejecutar la FAQ y después la solicitud de reserva:
+
+```text
+[MCP] Herramienta solicitada tool=consultar_faq
+[MCP] Herramienta completada tool=consultar_faq
+[MCP] Herramienta solicitada tool=consultar_clima
+[MCP] Herramienta completada tool=consultar_clima
+[MCP] Herramienta solicitada tool=evaluar_condiciones
+[MCP] Herramienta completada tool=evaluar_condiciones
+```
+
+A2A muestra `[A2A] Servidor iniciado` al arrancar y, durante cada solicitud:
+
+```text
+[A2A] Mensaje recibido
+[A2A] MCP conectado
+[A2A] Ejecución multiagente iniciada
+[A2A] Delegación iniciada
+[A2A] Delegación completada
+[A2A] Respuesta enviada
+```
+
+Las delegaciones identifican `faq_agent` para la FAQ y `weather_agent` / `safety_agent` para la reserva bloqueada. Ante fallos aparecen `[MCP] Herramienta error tool=...` o `[A2A] Error ...`, según corresponda, sin imprimir claves API ni cabeceras de autorización.
+
+### Cliente y alcance del contexto
+
+El cliente obtiene la Agent Card, se conecta mediante JSON-RPC A2A 1.0, muestra la respuesta final y conserva un `context_id` durante la sesión. Permite salir con `salir`, `exit` o `quit`.
+
+Como alcance actual de esta hoja, el cliente conserva el contexto A2A de la sesión, pero el executor no mantiene historial conversacional interno persistente del manager entre turnos. Las reservas continúan en memoria del proceso MCP.
+
 ## VIDEO
 
 Video demostrativo: [https://youtu.be/WpdA-NCLGgw](https://youtu.be/WpdA-NCLGgw)
@@ -27,6 +154,7 @@ npx --yes promptfoo@latest eval --no-cache --output reports/promptfoo_report.htm
 - sentence-transformers
 - OpenAI Python SDK
 - OpenAI Agents SDK (`openai-agents`)
+- MCP Streamable HTTP y A2A JSON-RPC 1.0
 - Groq como proveedor compatible con OpenAI
 - Open-Meteo
 - psycopg2
@@ -48,6 +176,12 @@ Dimensión de los embeddings: `384`
 ├── centralized/                 # Arquitectura con Manager central
 ├── decentralized/               # Arquitectura basada en handoffs
 ├── hierarchical/                # Arquitectura con supervisores
+├── protocols/
+│   ├── agent_card.py             # Agente público y skills A2A
+│   ├── a2a_executor.py           # Adaptador A2A → manager con MCP
+│   ├── a2a_server.py             # Servidor A2A JSON-RPC
+│   ├── mcp_server.py             # Único servidor MCP Streamable HTTP
+│   └── terminal_client.py        # Terminal que consume exclusivamente A2A
 ├── Evals/
 │   ├── faq_tests.yaml            # Evals FAQ
 │   └── booking_tests.yaml        # Evals Booking
@@ -236,7 +370,7 @@ El Booking Agent implementa una calendarización sencilla en memoria. No modific
 
 ## Infraestructura y Docker
 
-PostgreSQL con `pgvector` se ejecuta en Docker. La aplicación también se ejecuta dentro de Docker para usar una versión controlada de Python y dependencias.
+PostgreSQL con `pgvector` se ejecuta en Docker. Para la Hoja de Trabajo #7, MCP, A2A y el cliente se ejecutan localmente con el entorno virtual, como indica la sección Protocolos Agénticos. El servicio Docker `app` se conserva para las ejecuciones anteriores de las arquitecturas y herramientas.
 
 El servicio `postgres` expone el puerto local `5433` y el servicio `app` se conecta internamente a PostgreSQL por el puerto `5432`.
 
@@ -258,18 +392,7 @@ Crea el archivo `.env` a partir de `.env.example`:
 Copy-Item .env.example .env
 ```
 
-Configura al menos:
-
-```text
-GROQ_API_KEY=tu_api_key_de_groq
-DB_HOST=localhost
-DB_PORT=5433
-DB_NAME=parachute_rag
-DB_USER=parachute_user
-DB_PASSWORD=parachute_secure_password
-```
-
-Estos valores corresponden a la ejecución local desde Windows. Dentro de Docker, el servicio de aplicación utiliza `DB_HOST=postgres` y el puerto interno `5432`.
+Configura localmente `GROQ_API_KEY` y las variables de conexión `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASSWORD`. Este README no reproduce sus valores ni el contenido del archivo de configuración. Para ejecutar desde Windows se utiliza el puerto publicado de PostgreSQL (`5433`); el servicio de aplicación dentro de Docker utiliza el puerto interno `5432`.
 
 
 ### Construcción y base de datos
