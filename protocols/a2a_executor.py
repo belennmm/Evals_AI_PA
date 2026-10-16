@@ -51,15 +51,23 @@ class ParachuteAgentExecutor(AgentExecutor):
     ) -> None:
         user_input = context.get_user_input()
         request_id = uuid4().hex
-        logger.info("[A2A] Mensaje recibido request_id=%s caracteres=%s",
-                    request_id, len(user_input))
 
         if not user_input:
+            logger.info(
+                "[A2A] Mensaje vacío request_id=%s",
+                request_id,
+            )
             response = new_text_message(
                 text="No se recibió ningún mensaje."
             )
             await event_queue.enqueue_event(response)
             return
+
+        logger.info(
+            "[A2A] Mensaje recibido request_id=%s caracteres=%s",
+            request_id,
+            len(user_input),
+        )
 
         stage = "mcp_connect"
         try:
